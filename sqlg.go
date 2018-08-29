@@ -3,25 +3,27 @@ package sqlg
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"strconv"
+	"reflect"
 	"strings"
 )
 
 type Config struct {
 	IdentifierEscape func(string) string
 	Placeholder      PlaceholderFormat
+	Tag              string
 }
 
 type qgConfig struct {
 	IdentifierEscape func(string) string
 	Placeholder      func(buf *bytes.Buffer)
+	Tag              string
 }
 
 func (c *Config) Glue(q Qg) (string, []interface{}, error) {
 	return q.ToSql(&qgConfig{
 		IdentifierEscape: c.IdentifierEscape,
 		Placeholder:      c.Placeholder.GeneratePlaceholderFunc(),
+		Tag:              c.Tag,
 	})
 }
 
@@ -67,7 +69,6 @@ func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 				i++
 
-				fmt.Printf("%d: %v\n", i, qval[i])
 				var flagBuf bytes.Buffer
 
 				for i < end && (qval[i] == '%' || (qval[i] >= 'a' && qval[i] <= 'z')) {
@@ -104,6 +105,76 @@ func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 				case "sp":
 					qi++
+
+					val := reflect.ValueOf(qg[qi])
+					var placeholderNum = 0
+
+					switch val.Kind() {
+					case reflect.Map, reflect.Struct:
+						ss := &StructSplitter{Tag: cfg.Tag}
+						_, vals, err := ss.Split(qg[qi])
+
+						if err != nil {
+							return []string{}, []interface{}{}, err
+						}
+
+						resargs = append(resargs, vals...)
+						placeholderNum = len(vals)
+					case reflect.Array, reflect.Slice:
+						if val.Type().String() == "sqlg.Qg" {
+							return []string{}, []interface{}{}, errors.New("Component cant be sqlg.Qg")
+						}
+
+						for i := 0; i < val.Len(); i++ {
+							resargs = append(resargs, val.Index(i))
+						}
+
+						placeholderNum = val.Len()
+					default:
+						return []string{}, []interface{}{}, errors.New("Component must be map, struct or array type")
+					}
+
+					for i := 0; i < placeholderNum; i++ {
+						if i > 0 {
+							chunk.WriteString(", ")
+						}
+
+						cfg.Placeholder(chunk)
+					}
+
+					/*
+						switch spval := qg[qi].(type) {
+						case map[string]interface{}:
+
+							giveColon := false
+							for _, v := range spval {
+								if giveColon {
+									chunk.WriteString(", ")
+								}
+
+								cfg.Placeholder(chunk)
+								resargs = append(resargs, v)
+								giveColon = true
+							}
+						default:
+							if reflect.TypeOf(spval).Kind() == reflect.Struct {
+								_, structValues, _ := SplitStruct(spval)
+
+								resargs = append(resargs, structValues...)
+
+								for giveColon, i, vLen := false, 0, len(structValues); i < vLen; i++ {
+									if giveColon {
+										chunk.WriteString(", ")
+									}
+
+									cfg.Placeholder(chunk)
+									giveColon = true
+								}
+							} else {
+								return []string{}, []interface{}{}, errors.New("Component must be map[string]interface{} or struct type")
+							}
+						}
+					*/
 
 				case "%": // escaped %%
 					chunk.WriteByte('%')
