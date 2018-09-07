@@ -19,7 +19,7 @@ type qgConfig struct {
 	Tag              string
 }
 
-func (c *Config) Glue(q Qg) (string, []interface{}, error) {
+func (c *Config) Glue(q *Qg) (string, []interface{}, error) {
 	return q.ToSql(&qgConfig{
 		IdentifierEscape: c.IdentifierEscape,
 		Placeholder:      c.Placeholder.GeneratePlaceholderFunc(),
@@ -29,20 +29,24 @@ func (c *Config) Glue(q Qg) (string, []interface{}, error) {
 
 type Qg []interface{}
 
-func (qg Qg) ToSql(cfg *qgConfig) (string, []interface{}, error) {
+func (qg *Qg) ToSql(cfg *qgConfig) (string, []interface{}, error) {
 	res, args, err := qg.Compile(cfg)
 
 	return strings.Join(res, " "), args, err
 }
 
-func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
+func (qg *Qg) Append(chunks ...interface{}) {
+	*qg = append(*qg, chunks...)
+}
+
+func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 	var ressql []string
 	var resargs []interface{}
 
-	for qi, qend := 0, len(qg); qi < qend; {
+	for qi, qend := 0, len(*qg); qi < qend; {
 		chunk := &bytes.Buffer{}
 
-		switch qval := qg[qi].(type) {
+		switch qval := (*qg)[qi].(type) {
 		case Qg:
 			sql, args, err := qval.ToSql(cfg)
 			if err != nil {
@@ -85,11 +89,11 @@ func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 					cfg.Placeholder(chunk)
 
 					// add value to args
-					resargs = append(resargs, qg[qi])
+					resargs = append(resargs, (*qg)[qi])
 
 				case "and", "or":
 					qi++
-					switch aoval := qg[qi].(type) {
+					switch aoval := (*qg)[qi].(type) {
 					case Qg:
 						sql, args, err := aoval.Compile(cfg)
 						if err != nil {
@@ -106,13 +110,13 @@ func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 				case "sp":
 					qi++
 
-					val := reflect.ValueOf(qg[qi])
+					val := reflect.ValueOf((*qg)[qi])
 					var placeholderNum = 0
 
 					switch val.Kind() {
 					case reflect.Map, reflect.Struct:
 						ss := &StructSplitter{Tag: cfg.Tag}
-						_, vals, err := ss.Split(qg[qi])
+						_, vals, err := ss.Split((*qg)[qi])
 
 						if err != nil {
 							return []string{}, []interface{}{}, err
@@ -143,7 +147,7 @@ func (qg Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 					}
 
 					/*
-						switch spval := qg[qi].(type) {
+						switch spval := (*qg)[qi].(type) {
 						case map[string]interface{}:
 
 							giveColon := false
