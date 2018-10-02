@@ -6,8 +6,9 @@ import (
 )
 
 type StructSplitter struct {
-	Exclude []string
-	Tag     string
+	Exclude     []string
+	KeyModifier func(string) string
+	Tag         string
 }
 
 func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []interface{}, err error) {
@@ -25,6 +26,10 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 			}
 
 			key := kv.String()
+
+			if ss.KeyModifier != nil {
+				key = ss.KeyModifier(key)
+			}
 
 			// filter out excluded fields
 			if len(ss.Exclude) > 0 {
@@ -60,6 +65,10 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 			}
 
 			key := tf.Name
+
+			if ss.KeyModifier != nil {
+				key = ss.KeyModifier(key)
+			}
 
 			// check if we have tag
 			if ss.Tag != "" {

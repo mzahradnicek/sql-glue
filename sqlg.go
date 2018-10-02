@@ -9,12 +9,14 @@ import (
 
 type Config struct {
 	IdentifierEscape func(string) string
+	KeyModifier      func(string) string
 	Placeholder      PlaceholderFormat
 	Tag              string
 }
 
 type qgConfig struct {
 	IdentifierEscape func(string) string
+	KeyModifier      func(string) string
 	Placeholder      func(buf *bytes.Buffer)
 	Tag              string
 }
@@ -22,6 +24,7 @@ type qgConfig struct {
 func (c *Config) Glue(q *Qg) (string, []interface{}, error) {
 	return q.ToSql(&qgConfig{
 		IdentifierEscape: c.IdentifierEscape,
+		KeyModifier:      c.KeyModifier,
 		Placeholder:      c.Placeholder.GeneratePlaceholderFunc(),
 		Tag:              c.Tag,
 	})
@@ -130,7 +133,7 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 						}
 
 						for i := 0; i < val.Len(); i++ {
-							resargs = append(resargs, val.Index(i))
+							resargs = append(resargs, val.Index(i).Interface())
 						}
 
 						placeholderNum = val.Len()
@@ -144,6 +147,43 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 						}
 
 						cfg.Placeholder(chunk)
+					}
+				case "set":
+					qi++
+
+					val := reflect.ValueOf((*qg)[qi])
+
+					switch val.Kind() {
+					case reflect.Map, reflect.Struct:
+						ss := &StructSplitter{Tag: cfg.Tag, KeyModifier: cfg.KeyModifier}
+						keys, vals, err := ss.Split((*qg)[qi])
+
+						if err != nil {
+							return []string{}, []interface{}{}, err
+						}
+
+						for i := 0; i < len(vals); i++ {
+							if i > 0 {
+								chunk.WriteString(", ")
+							}
+
+							// write key
+							if cfg.IdentifierEscape != nil {
+								chunk.WriteString(cfg.IdentifierEscape(keys[i]))
+							} else {
+								chunk.WriteString(keys[i])
+							}
+
+							chunk.WriteString(" = ")
+
+							// write value
+							cfg.Placeholder(chunk)
+						}
+
+						resargs = append(resargs, vals...)
+
+					default:
+						return []string{}, []interface{}{}, errors.New("Component must be map or struct type")
 					}
 
 					/*
