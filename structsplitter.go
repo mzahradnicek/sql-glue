@@ -64,6 +64,19 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 				continue
 			}
 
+			// if field is embeded struct
+			if f.Kind() == reflect.Struct && tf.Anonymous {
+				if esKeys, esVals, esErr := ss.Split(f.Interface()); esErr != nil {
+					err = esErr
+					return
+				} else {
+					resKeys = append(resKeys, esKeys...)
+					resVals = append(resVals, esVals...)
+				}
+
+				continue
+			}
+
 			key := tf.Name
 
 			if ss.KeyModifier != nil {
