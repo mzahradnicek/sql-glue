@@ -1,20 +1,22 @@
 package sqlg
 
-// this is DEPRECATED, use Splitter
-// It stays here only for compatibility with old code
-
 import (
 	"errors"
 	"reflect"
 )
 
-type StructSplitter struct {
-	Exclude     []string
-	KeyModifier func(string) string
-	Tag         string
+var splitter *Splitter
+
+func init() {
+	splitter = NewSplitter()
 }
 
-func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []interface{}, err error) {
+type Splitter struct {
+	keyModifier func(string) string
+	tag         string
+}
+
+func (ss *Splitter) Split(i interface{}, exclude []string) (resKeys []string, resVals []interface{}, err error) {
 	val := reflect.ValueOf(i)
 
 	switch val.Kind() {
@@ -30,14 +32,14 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 
 			key := kv.String()
 
-			if ss.KeyModifier != nil {
-				key = ss.KeyModifier(key)
+			if ss.keyModifier != nil {
+				key = ss.keyModifier(key)
 			}
 
 			// filter out excluded fields
-			if len(ss.Exclude) > 0 {
-				for i := 0; i < len(ss.Exclude); i++ {
-					if ss.Exclude[i] == key {
+			if len(exclude) > 0 {
+				for i := 0; i < len(exclude); i++ {
+					if exclude[i] == key {
 						continue MapOuterLoop
 					}
 				}
@@ -69,7 +71,7 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 
 			// if field is embeded struct
 			if f.Kind() == reflect.Struct && tf.Anonymous {
-				if esKeys, esVals, esErr := ss.Split(f.Interface()); esErr != nil {
+				if esKeys, esVals, esErr := ss.Split(f.Interface(), exclude); esErr != nil {
 					err = esErr
 					return
 				} else {
@@ -80,27 +82,25 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 				continue
 			}
 
-			key := tf.Name
-
-			if ss.KeyModifier != nil {
-				key = ss.KeyModifier(key)
-			}
+			var key string
 
 			// check if we have tag
-			if ss.Tag != "" {
-				if tag := tf.Tag.Get(ss.Tag); tag != "" {
-					if tag == "-" {
-						continue StructOuterLoop
-					}
-
-					key = tag
+			if tag := tf.Tag.Get(ss.tag); tag != "" {
+				if tag == "-" {
+					continue StructOuterLoop
 				}
+
+				key = tag
+			} else if ss.keyModifier != nil {
+				key = ss.keyModifier(tf.Name)
+			} else {
+				key = tf.Name
 			}
 
 			// filter out excluded fields
-			if len(ss.Exclude) > 0 {
-				for i := 0; i < len(ss.Exclude); i++ {
-					if ss.Exclude[i] == key {
+			if len(exclude) > 0 {
+				for i := 0; i < len(exclude); i++ {
+					if exclude[i] == key {
 						continue StructOuterLoop
 					}
 				}
@@ -115,4 +115,26 @@ func (ss *StructSplitter) Split(i interface{}) (resKeys []string, resVals []inte
 	}
 
 	return
+}
+
+func (ss *Splitter) KeyModifier(km func(string) string) *Splitter {
+	ss.keyModifier = km
+	return ss
+}
+
+func (ss *Splitter) Tag(t string) *Splitter {
+	ss.tag = t
+	return ss
+}
+
+func NewSplitter() *Splitter {
+	return &Splitter{tag: "sgsp"}
+}
+
+func GetSplitter() *Splitter {
+	return splitter
+}
+
+func Split(i interface{}, exclude []string) (resKeys []string, resVals []interface{}, err error) {
+	return splitter.Split(i, exclude)
 }

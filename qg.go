@@ -7,13 +7,6 @@ import (
 	"strings"
 )
 
-type Config struct {
-	IdentifierEscape func(string) string
-	KeyModifier      func(string) string
-	Placeholder      PlaceholderFormat
-	Tag              string
-}
-
 type qgConfig struct {
 	IdentifierEscape func(string) string
 	KeyModifier      func(string) string
@@ -21,25 +14,21 @@ type qgConfig struct {
 	Tag              string
 }
 
-func (c *Config) Glue(q *Qg) (string, []interface{}, error) {
-	return q.ToSql(&qgConfig{
-		IdentifierEscape: c.IdentifierEscape,
-		KeyModifier:      c.KeyModifier,
-		Placeholder:      c.Placeholder.GeneratePlaceholderFunc(),
-		Tag:              c.Tag,
-	})
-}
-
 type Qg []interface{}
-
-func (qg *Qg) ToSql(cfg *qgConfig) (string, []interface{}, error) {
-	res, args, err := qg.Compile(cfg)
-
-	return strings.Join(res, " "), args, err
-}
 
 func (qg *Qg) Append(chunks ...interface{}) {
 	*qg = append(*qg, chunks...)
+}
+
+func (qg *Qg) ToSql(cfg *Config) (string, []interface{}, error) {
+	res, args, err := qg.Compile(&qgConfig{
+		IdentifierEscape: cfg.IdentifierEscape,
+		KeyModifier:      cfg.KeyModifier,
+		Placeholder:      cfg.PlaceholderInit(),
+		Tag:              cfg.Tag,
+	})
+
+	return strings.Join(res, " "), args, err
 }
 
 func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
@@ -51,14 +40,14 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 		switch qval := (*qg)[qi].(type) {
 		case Qg:
-			sql, args, err := qval.ToSql(cfg)
+			sql, args, err := qval.Compile(cfg)
 			if err != nil {
 				return []string{}, []interface{}{}, err
 			}
 
 			resargs = append(resargs, args...)
 
-			chunk.WriteString(sql)
+			chunk.WriteString(strings.Join(sql, " "))
 		case string:
 			for i, end := 0, len(qval); i < end; {
 				lasti := i
@@ -118,8 +107,9 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 					switch val.Kind() {
 					case reflect.Map, reflect.Struct:
-						ss := &StructSplitter{Tag: cfg.Tag}
-						_, vals, err := ss.Split((*qg)[qi])
+						// ss := &StructSplitter{Tag: cfg.Tag}
+						// _, vals, err := ss.Split((*qg)[qi])
+						_, vals, err := splitter.Split((*qg)[qi], nil)
 
 						if err != nil {
 							return []string{}, []interface{}{}, err
@@ -155,8 +145,9 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 					switch val.Kind() {
 					case reflect.Map, reflect.Struct:
-						ss := &StructSplitter{Tag: cfg.Tag, KeyModifier: cfg.KeyModifier}
-						keys, vals, err := ss.Split((*qg)[qi])
+						// ss := &StructSplitter{Tag: cfg.Tag, KeyModifier: cfg.KeyModifier}
+						// keys, vals, err := ss.Split((*qg)[qi])
+						keys, vals, err := splitter.Split((*qg)[qi], nil)
 
 						if err != nil {
 							return []string{}, []interface{}{}, err
@@ -185,41 +176,6 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 					default:
 						return []string{}, []interface{}{}, errors.New("Component must be map or struct type")
 					}
-
-					/*
-						switch spval := (*qg)[qi].(type) {
-						case map[string]interface{}:
-
-							giveColon := false
-							for _, v := range spval {
-								if giveColon {
-									chunk.WriteString(", ")
-								}
-
-								cfg.Placeholder(chunk)
-								resargs = append(resargs, v)
-								giveColon = true
-							}
-						default:
-							if reflect.TypeOf(spval).Kind() == reflect.Struct {
-								_, structValues, _ := SplitStruct(spval)
-
-								resargs = append(resargs, structValues...)
-
-								for giveColon, i, vLen := false, 0, len(structValues); i < vLen; i++ {
-									if giveColon {
-										chunk.WriteString(", ")
-									}
-
-									cfg.Placeholder(chunk)
-									giveColon = true
-								}
-							} else {
-								return []string{}, []interface{}{}, errors.New("Component must be map[string]interface{} or struct type")
-							}
-						}
-					*/
-
 				case "%": // escaped %%
 					chunk.WriteByte('%')
 				}
