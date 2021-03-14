@@ -5,11 +5,20 @@ import (
 )
 
 type Builder struct {
-	cfg Config
+	cfg      Config
+	splitter *Splitter
 }
 
 func (b *Builder) Glue(q *Qg) (string, []interface{}, error) {
 	return q.ToSql(&b.cfg)
+}
+
+func (b *Builder) Split(i interface{}, exclude []string) ([]string, []interface{}, error) {
+	return b.splitter.Split(i, exclude)
+}
+
+func (b *Builder) GetSplitter() *Splitter {
+	return b.splitter
 }
 
 func NewBuilder(cfg Config) *Builder {
@@ -24,6 +33,8 @@ func NewBuilder(cfg Config) *Builder {
 		os.Stderr.WriteString("Error: sqlg config KeyModifier cant be nil\n")
 		os.Exit(1)
 	}
+
+	res.splitter = NewSplitter().KeyModifier(cfg.KeyModifier)
 
 	if cfg.Tag == "" {
 		cfg.Tag = "sqlg"

@@ -107,9 +107,8 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 					switch val.Kind() {
 					case reflect.Map, reflect.Struct:
-						// ss := &StructSplitter{Tag: cfg.Tag}
-						// _, vals, err := ss.Split((*qg)[qi])
-						_, vals, err := splitter.Split((*qg)[qi], nil)
+						ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
+						_, vals, err := ss.Split((*qg)[qi], nil)
 
 						if err != nil {
 							return []string{}, []interface{}{}, err
@@ -145,9 +144,8 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 
 					switch val.Kind() {
 					case reflect.Map, reflect.Struct:
-						// ss := &StructSplitter{Tag: cfg.Tag, KeyModifier: cfg.KeyModifier}
-						// keys, vals, err := ss.Split((*qg)[qi])
-						keys, vals, err := splitter.Split((*qg)[qi], nil)
+						ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
+						keys, vals, err := ss.Split((*qg)[qi], nil)
 
 						if err != nil {
 							return []string{}, []interface{}{}, err

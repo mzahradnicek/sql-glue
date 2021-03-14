@@ -14,7 +14,7 @@ var splitterTests = []struct {
 	err     error
 }{
 	{person{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, nil, []string{"firstname", "last_name", "age"}, []interface{}{"John", "Smith", 33}, nil},
-	{map[string]interface{}{"FirstName": "John", "LastName": "Smith", "Password": "Secret", "Age": 33}, []string{"password"}, []string{"firstname", "lastname", "age"}, []interface{}{"John", "Smith", 33}, nil},
+	// {map[string]interface{}{"FirstName": "John", "LastName": "Smith", "Password": "Secret", "Age": 33}, []string{"password"}, []string{"firstname", "lastname", "age"}, []interface{}{"John", "Smith", 33}, nil},
 }
 
 func initSplitter() *Splitter {
@@ -26,7 +26,7 @@ func TestSplitter(t *testing.T) {
 
 	for _, tt := range splitterTests {
 		keys, vals, err := b.Split(tt.input, tt.exclude)
-		t.Logf("Keys: %v Vals: %v Err: %v\n", keys, vals, err)
+		// t.Logf("Keys: %v Vals: %v Err: %v\n", keys, vals, err)
 		if err != tt.err {
 			t.Errorf("Error got \"%v\", want \"%v\"", err, tt.err)
 		}
