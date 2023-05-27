@@ -8,7 +8,7 @@ import (
 var splitter *Splitter
 
 func init() {
-	splitter = NewSplitter()
+	splitter = NewSplitter().KeyModifier(ToSnake)
 }
 
 type Splitter struct {
