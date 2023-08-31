@@ -1,6 +1,9 @@
 package sqlg
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func ToSnake(camel string) string {
 	var b strings.Builder
@@ -24,5 +27,6 @@ func ToSnake(camel string) string {
 		b.WriteRune(v + 32) // 'a'-'A' = 32
 	}
 
+	fmt.Printf("ToSnake in: %v out: %v\n", camel, b.String())
 	return b.String()
 }
