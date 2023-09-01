@@ -28,3 +28,32 @@ func ToSnake(camel string) string {
 
 	return b.String()
 }
+
+func ToCamel(snake string) string {
+	if len(snake) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	mkUpper := true
+
+	for _, v := range snake {
+		if v == '_' {
+			mkUpper = true
+			continue
+		}
+
+		if mkUpper {
+			if v >= 'a' && v <= 'z' {
+				v = v - 32
+			}
+
+			mkUpper = false
+		}
+
+		b.WriteRune(v)
+	}
+
+	return b.String()
+}
