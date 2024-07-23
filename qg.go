@@ -3,6 +3,7 @@ package sqlg
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -180,7 +181,7 @@ func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
 			}
 
 		default:
-			return []string{}, []interface{}{}, errors.New("Component must be string or another Qg")
+			return []string{}, []interface{}{}, fmt.Errorf("Component %v must be string or another Qg is %T", qi, qval)
 		}
 		qi++
 		ressql = append(ressql, chunk.String())
