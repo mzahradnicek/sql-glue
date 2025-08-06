@@ -5,7 +5,13 @@ import (
 	"reflect"
 )
 
-var splitter *Splitter
+var (
+	splitter *Splitter
+
+	ErrMapNoStringKeys = errors.New("Map component must have a string keys!")
+	ErrStructNoFields  = errors.New("Struct has no fields!")
+	ErrBadType         = errors.New("Component must be map[string]... or struct type")
+)
 
 func init() {
 	splitter = NewSplitter().KeyModifier(ToSnake)
@@ -26,7 +32,7 @@ func (ss *Splitter) Split(i interface{}, exclude []string) (resKeys []string, re
 	MapOuterLoop:
 		for _, kv := range keys {
 			if kv.Kind() != reflect.String {
-				err = errors.New("Map component must have a string keys!")
+				err = ErrMapNoStringKeys
 				return
 			}
 
@@ -53,7 +59,7 @@ func (ss *Splitter) Split(i interface{}, exclude []string) (resKeys []string, re
 		numFields := val.NumField()
 
 		if numFields == 0 {
-			err = errors.New("Struct has no fields!")
+			err = ErrStructNoFields
 			return
 		}
 
@@ -111,7 +117,7 @@ func (ss *Splitter) Split(i interface{}, exclude []string) (resKeys []string, re
 		}
 
 	default:
-		err = errors.New("Component must be map[string]... or struct type")
+		err = ErrBadType
 	}
 
 	return

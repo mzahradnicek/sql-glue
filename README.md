@@ -1,5 +1,5 @@
 # Sql-Glue
-SQL Glue is library for GO which speeding up constructing SQL queries. It generate input for sqlx or other libraries.
+SQL Glue is library for GO which speeding up constructing SQL queries. It generate input for sqlx or other libraries for SQL databases.
 
 ## Features
 - Escaping variables and identifiers
