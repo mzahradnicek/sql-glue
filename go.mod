@@ -1,3 +1,3 @@
-module github.com/mzahradnicek/sql-glue/v2
+module github.com/mzahradnicek/sql-glue
 
 go 1.22
