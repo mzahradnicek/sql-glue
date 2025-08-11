@@ -1,40 +1,70 @@
 package sqlg
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
-var testsToSnake = []struct {
-	in   string
-	want string
+var tRETStruct = struct {
+	Name string
 }{
-	{"ToSnake", "to_snake"},
-	{"TSnake", "t_snake"},
-	{"ToSnakeS", "to_snake_s"},
-	{"toSnakeS", "to_snake_s"},
+	Name: "Joe",
 }
 
-var testsToCamel = []struct {
-	in   string
-	want string
+var tRETString string = "world"
+
+var testsResolveElemType = []struct {
+	name    string
+	input   interface{}
+	kind    []reflect.Kind
+	wantVal interface{}
+	wantPtr interface{}
 }{
-	{"to_snake", "ToSnake"},
-	{"t_snake", "TSnake"},
-	{"to_snake_s", "ToSnakeS"},
+	{
+		name:    "Struct pointer, expects struct",
+		input:   &tRETStruct,
+		kind:    []reflect.Kind{reflect.Struct},
+		wantVal: tRETStruct,
+		wantPtr: &tRETStruct,
+	}, {
+		name:    "String value, expects string",
+		input:   "hello",
+		kind:    []reflect.Kind{reflect.String},
+		wantVal: "hello",
+		wantPtr: nil,
+	}, {
+		name:    "String pointer, expects string",
+		input:   &tRETString,
+		kind:    []reflect.Kind{reflect.String},
+		wantVal: "world",
+		wantPtr: &tRETString,
+	}, {
+		name:    "Mismatched kind (int input, string expected)",
+		input:   789,
+		kind:    []reflect.Kind{reflect.String},
+		wantVal: nil,
+		wantPtr: nil,
+	}, {
+		name:    "Nil input",
+		input:   nil,
+		kind:    []reflect.Kind{reflect.Int},
+		wantVal: nil,
+		wantPtr: nil,
+	},
 }
 
-func TestToSnake(t *testing.T) {
-	for _, tt := range testsToSnake {
-		res := ToSnake(tt.in)
-		if res != tt.want {
-			t.Errorf("got %v, want %v", res, tt.want)
-		}
-	}
-}
+func TestResolveElemType(t *testing.T) {
+	for _, tc := range testsResolveElemType {
+		t.Run(tc.name, func(t *testing.T) {
+			val, ptr := resolveElemType(tc.input, tc.kind...)
 
-func TestToCamel(t *testing.T) {
-	for _, tt := range testsToCamel {
-		res := ToCamel(tt.in)
-		if res != tt.want {
-			t.Errorf("got %v, want %v", res, tt.want)
-		}
+			// Porovnanie výsledkov
+			if val != tc.wantVal {
+				t.Errorf("For val: got %v, want %v", val, tc.wantVal)
+			}
+			if ptr != tc.wantPtr {
+				t.Errorf("For ptr: got %v, want %v", ptr, tc.wantPtr)
+			}
+		})
 	}
 }

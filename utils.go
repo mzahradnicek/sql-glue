@@ -1,59 +1,34 @@
 package sqlg
 
 import (
-	"strings"
+	"reflect"
+	"slices"
 )
 
-func ToSnake(camel string) string {
-	var b strings.Builder
-	l := len(camel) - 1
+func resolveElemType(input interface{}, kind ...reflect.Kind) (val interface{}, ptr interface{}) {
+	value := reflect.ValueOf(input)
 
-	for i, v := range camel {
-		// A is 65, a is 97
-		if v >= 'a' || v < 'A' {
-			b.WriteRune(v)
-			continue
-		}
-		// v is capital letter here
-		// irregard first letter
-		// add underscore if last letter is capital letter
-		// add underscore when previous letter is lowercase
-		// add underscore when next letter is lowercase
-		if i != 0 && ((rune(camel[i-1]) >= 'a' || rune(camel[i-1]) < 'A') || // pre
-			(i < l && rune(camel[i+1]) >= 'a')) { //next
-			b.WriteRune('_')
-		}
-		b.WriteRune(v + 32) // 'a'-'A' = 32
+	if value.Kind() == reflect.Pointer {
+		ptr = value.Interface()
+		value = value.Elem()
 	}
 
-	return b.String()
+	if slices.Contains(kind, value.Kind()) {
+		val = value.Interface()
+	}
+
+	return
 }
 
-func ToCamel(snake string) string {
-	if len(snake) == 0 {
-		return ""
+func errorChunkPreview(chunk string, pos int) string {
+	if pos > len(chunk) {
+		pos = len(chunk)
 	}
 
-	var b strings.Builder
-
-	mkUpper := true
-
-	for _, v := range snake {
-		if v == '_' {
-			mkUpper = true
-			continue
-		}
-
-		if mkUpper {
-			if v >= 'a' && v <= 'z' {
-				v = v - 32
-			}
-
-			mkUpper = false
-		}
-
-		b.WriteRune(v)
+	start := pos - 20
+	if start < 0 {
+		start = 0
 	}
 
-	return b.String()
+	return chunk[start:pos]
 }

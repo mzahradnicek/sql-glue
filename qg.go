@@ -2,190 +2,285 @@ package sqlg
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 )
 
-type qgConfig struct {
-	IdentifierEscape func(string) string
-	KeyModifier      func(string) string
-	Placeholder      func(buf *bytes.Buffer)
-	Tag              string
-}
-
 type Qg []interface{}
+
+// Excluded field list
+type Qe []string
 
 func (qg *Qg) Append(chunks ...interface{}) {
 	*qg = append(*qg, chunks...)
 }
 
-func (qg *Qg) ToSql(cfg *Config) (string, []interface{}, error) {
-	res, args, err := qg.Compile(&qgConfig{
-		IdentifierEscape: cfg.IdentifierEscape,
-		KeyModifier:      cfg.KeyModifier,
-		Placeholder:      cfg.PlaceholderInit(),
-		Tag:              cfg.Tag,
-	})
+func (qg Qg) Process(cfg *Config) (string, []interface{}, error) {
+	placeholderWriter := cfg.PlaceholderInit()
+	resSql, resArgs, err := qg.compile(cfg, placeholderWriter)
 
-	return strings.Join(res, " "), args, err
+	return strings.Join(resSql, " "), resArgs, err
 }
 
-func (qg *Qg) Compile(cfg *qgConfig) ([]string, []interface{}, error) {
-	var ressql []string
-	var resargs []interface{}
-
-	for qi, qend := 0, len(*qg); qi < qend; {
+func (qg Qg) compile(cfg *Config, placeholderWriter func(buf *bytes.Buffer)) (resSql []string, resArgs []interface{}, err error) {
+	splitterCache := newSplitterCache()
+	for qi, qlen := 0, len(qg); qi < qlen; {
 		chunk := &bytes.Buffer{}
 
-		switch qval := (*qg)[qi].(type) {
-		case Qg:
-			sql, args, err := qval.Compile(cfg)
-			if err != nil {
-				return []string{}, []interface{}{}, err
+		getNextEl := func() interface{} {
+			if qi+1 >= qlen {
+				return nil
 			}
 
-			resargs = append(resargs, args...)
+			qi++
+
+			return qg[qi]
+		}
+
+		switch qval := qg[qi].(type) {
+		case Qg:
+			sql, args, err := qval.compile(cfg, placeholderWriter)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			resArgs = append(resArgs, args...)
 
 			chunk.WriteString(strings.Join(sql, " "))
-		case string:
-			for i, end := 0, len(qval); i < end; {
-				lasti := i
-				for i < end && qval[i] != '%' {
-					i++
+		case string: // template processing
+			for sPos, sLen := 0, len(qval); sPos < sLen; {
+				chunkStartPos := sPos
+				for sPos < sLen && qval[sPos] != '%' {
+					sPos++
 				}
 
-				if i > lasti {
-					chunk.WriteString(qval[lasti:i])
+				if sPos > chunkStartPos {
+					chunk.WriteString(qval[chunkStartPos:sPos])
 				}
 
-				if i >= end {
+				if sPos >= sLen {
 					break
 				}
 
-				i++
+				// move pointer to first character of expression
+				sPos++
 
-				var flagBuf bytes.Buffer
+				// read expression
+				var expBuf bytes.Buffer
 
-				for i < end && (qval[i] == '%' || (qval[i] >= 'a' && qval[i] <= 'z')) {
-					flagBuf.WriteByte(qval[i])
-					i++
+				for sPos < sLen && (qval[sPos] == '%' || (qval[sPos] >= 'a' && qval[sPos] <= 'z')) {
+					expBuf.WriteByte(qval[sPos])
+					sPos++
 				}
 
-				flag := flagBuf.String()
+				exp := expBuf.String()
 
-				switch flag {
+				switch exp {
 				case "v": // escaped value
-					qi++
-					// make placeholder
-					cfg.Placeholder(chunk)
-
-					// add value to args
-					resargs = append(resargs, (*qg)[qi])
-
-				case "and", "or":
-					qi++
-					switch aoval := (*qg)[qi].(type) {
-					case Qg:
-						sql, args, err := aoval.Compile(cfg)
-						if err != nil {
-							return []string{}, []interface{}{}, err
-						}
-
-						resargs = append(resargs, args...)
-
-						chunk.WriteString("(" + strings.Join(sql, " "+strings.ToUpper(flag)+" ") + ")")
-					default:
-						return []string{}, []interface{}{}, errors.New("Component must be Qg type")
+					nextEl := getNextEl()
+					if nextEl == nil {
+						return nil, nil, fmt.Errorf(`Missing field or nil value - #%d '%s'`, qi-1, errorChunkPreview(qval, sPos+len(exp)))
 					}
 
-				case "sp":
-					qi++
+					// make placeholder
+					placeholderWriter(chunk)
 
-					val := reflect.ValueOf((*qg)[qi])
-					var placeholderNum = 0
+					// add value to args
+					resArgs = append(resArgs, nextEl)
+				case "and", "or":
+					nextEl := getNextEl()
+					if nextEl == nil {
+						return nil, nil, fmt.Errorf(`Missing field or nil value - #%d '%s'`, qi-1, errorChunkPreview(qval, sPos+len(exp)))
+					}
 
-					switch val.Kind() {
-					case reflect.Map, reflect.Struct:
-						ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
-						_, vals, err := ss.Split((*qg)[qi], nil)
-
+					switch aoVal := nextEl.(type) {
+					case Qg:
+						sql, args, err := aoVal.compile(cfg, placeholderWriter)
 						if err != nil {
-							return []string{}, []interface{}{}, err
+							return nil, nil, err
 						}
 
-						resargs = append(resargs, vals...)
-						placeholderNum = len(vals)
-					case reflect.Array, reflect.Slice:
+						resArgs = append(resArgs, args...)
+
+						chunk.WriteString("(" + strings.Join(sql, " "+strings.ToUpper(exp)+" ") + ")")
+					default:
+						return nil, nil, fmt.Errorf(`Component must be Qg type - #%d '%s' it is %T`, qi, errorChunkPreview(qval, sPos+len(exp)), nextEl)
+					}
+				case "keys": // process keys of struct or map
+					nextEl := getNextEl()
+					if nextEl == nil {
+						return nil, nil, fmt.Errorf(`Missing field or nil value - #%d '%s'`, qi-1, errorChunkPreview(qval, sPos+len(exp)))
+					}
+
+					el, ptr := resolveElemType(nextEl, reflect.Struct, reflect.Map)
+					if el == nil {
+						return nil, nil, fmt.Errorf(`Component must be Map or Struct type - #%d '%s' it is %T`, qi, errorChunkPreview(qval, sPos+len(exp)), nextEl)
+					}
+
+					// check if next element is Qe
+					var qExclude Qe = nil
+					if qi+1 < qlen {
+						if v, ok := qg[qi+1].(Qe); ok {
+							qExclude = v
+							qi++
+						}
+					}
+
+					// check cache
+					var keys []string
+					keys, _ = splitterCache.Get(ptr)
+
+					if keys == nil || len(qExclude) > 0 {
+						if len(qExclude) == 0 {
+							qExclude = append(qExclude, "kv")
+						}
+
+						var vals []interface{}
+						ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
+						keys, vals, err = ss.Split(nextEl, qExclude...)
+
+						if err != nil {
+							return nil, nil, fmt.Errorf("Splitter error near #%d '%s': %w", qi, errorChunkPreview(qval, sPos+len(exp)), err)
+						}
+
+						// cache if we have a pointer
+						if ptr != nil {
+							splitterCache.Set(ptr, keys, vals)
+						}
+					}
+
+					for ki, kv := range keys {
+						if ki > 0 {
+							chunk.WriteString(", ")
+						}
+						chunk.WriteString(cfg.IdentifierEscape(kv))
+					}
+				case "vals":
+					nextEl := getNextEl()
+					if nextEl == nil {
+						return nil, nil, fmt.Errorf(`Missing field or nil value - #%d '%s'`, qi-1, errorChunkPreview(qval, sPos+len(exp)))
+					}
+
+					var placeholderCnt = 0
+
+					// process Struct or Map
+					el, ptr := resolveElemType(nextEl, reflect.Struct, reflect.Map)
+					if el != nil {
+						// check if next element is Qe
+						var qExclude Qe = nil
+						if qi+1 < qlen {
+							if v, ok := qg[qi+1].(Qe); ok {
+								qExclude = v
+								qi++
+							}
+						}
+
+						// check cache
+						var vals []interface{}
+						_, vals = splitterCache.Get(ptr)
+
+						if vals == nil || len(qExclude) > 0 {
+							if len(qExclude) == 0 {
+								qExclude = append(qExclude, "kv")
+							}
+
+							var keys []string
+							ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
+							keys, vals, err = ss.Split(nextEl, qExclude...)
+
+							if err != nil {
+								return nil, nil, fmt.Errorf("Splitter error near #%d '%s': %w", qi, errorChunkPreview(qval, sPos+len(exp)), err)
+							}
+
+							// cache if we have a pointer
+							if ptr != nil {
+								splitterCache.Set(ptr, keys, vals)
+							}
+						}
+
+						resArgs = append(resArgs, vals...)
+						placeholderCnt = len(vals)
+					} else if el, _ = resolveElemType(nextEl, reflect.Slice, reflect.Array); el != nil {
+						val := reflect.ValueOf(el)
 						if val.Type().String() == "sqlg.Qg" {
-							return []string{}, []interface{}{}, errors.New("Component cant be sqlg.Qg")
+							return nil, nil, fmt.Errorf(`Component can't be Qg type - #%d '%s'`, qi, errorChunkPreview(qval, sPos+len(exp)))
 						}
 
 						for i := 0; i < val.Len(); i++ {
-							resargs = append(resargs, val.Index(i).Interface())
+							resArgs = append(resArgs, val.Index(i).Interface())
 						}
 
-						placeholderNum = val.Len()
-					default:
-						return []string{}, []interface{}{}, errors.New("Component must be map, struct or array type")
+						placeholderCnt = val.Len()
+					} else { // return error
+						return nil, nil, fmt.Errorf(`Component must be Map, Struct, Slice or Array type - #%d '%s' it is %T`, qi, errorChunkPreview(qval, sPos+len(exp)), nextEl)
 					}
 
-					for i := 0; i < placeholderNum; i++ {
+					for i := 0; i < placeholderCnt; i++ {
 						if i > 0 {
 							chunk.WriteString(", ")
 						}
 
-						cfg.Placeholder(chunk)
+						placeholderWriter(chunk)
 					}
 				case "set":
-					qi++
-
-					val := reflect.ValueOf((*qg)[qi])
-
-					switch val.Kind() {
-					case reflect.Map, reflect.Struct:
-						ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
-						keys, vals, err := ss.Split((*qg)[qi], nil)
-
-						if err != nil {
-							return []string{}, []interface{}{}, err
-						}
-
-						for i := 0; i < len(vals); i++ {
-							if i > 0 {
-								chunk.WriteString(", ")
-							}
-
-							// write key
-							if cfg.IdentifierEscape != nil {
-								chunk.WriteString(cfg.IdentifierEscape(keys[i]))
-							} else {
-								chunk.WriteString(keys[i])
-							}
-
-							chunk.WriteString(" = ")
-
-							// write value
-							cfg.Placeholder(chunk)
-						}
-
-						resargs = append(resargs, vals...)
-
-					default:
-						return []string{}, []interface{}{}, errors.New("Component must be map or struct type")
+					nextEl := getNextEl()
+					if nextEl == nil {
+						return nil, nil, fmt.Errorf(`Missing field or nil value - #%d '%s'`, qi-1, errorChunkPreview(qval, sPos+len(exp)))
 					}
+
+					el, _ := resolveElemType(nextEl, reflect.Struct, reflect.Map)
+					if el == nil {
+						return nil, nil, fmt.Errorf(`Component must be Map or Struct type - #%d '%s' it is %T`, qi, errorChunkPreview(qval, sPos+len(exp)), nextEl)
+					}
+
+					// check if next element is Qe
+					qExclude := Qe{"set"}
+					if qi+1 < qlen {
+						if v, ok := qg[qi+1].(Qe); ok {
+							qExclude = v
+							qi++
+						}
+					}
+
+					ss := NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
+					keys, vals, err := ss.Split(nextEl, qExclude...)
+
+					if err != nil {
+						return nil, nil, fmt.Errorf("Splitter error near #%d '%s': %w", qi, errorChunkPreview(qval, sPos+len(exp)), err)
+					}
+
+					for i := 0; i < len(vals); i++ {
+						if i > 0 {
+							chunk.WriteString(", ")
+						}
+
+						// write key
+						if cfg.IdentifierEscape != nil {
+							chunk.WriteString(cfg.IdentifierEscape(keys[i]))
+						} else {
+							chunk.WriteString(keys[i])
+						}
+
+						chunk.WriteString(" = ")
+
+						// write value
+						placeholderWriter(chunk)
+					}
+
+					resArgs = append(resArgs, vals...)
+
 				case "%": // escaped %%
 					chunk.WriteByte('%')
 				}
 			}
 
 		default:
-			return []string{}, []interface{}{}, fmt.Errorf("Component %v must be string or another Qg is %T", qi, qval)
+			return nil, nil, fmt.Errorf("Component at #%d must be String or Qg type it is %T", qi, qval)
 		}
 		qi++
-		ressql = append(ressql, chunk.String())
+		resSql = append(resSql, chunk.String())
 	}
 
-	return ressql, resargs, nil
+	return resSql, resArgs, nil
 }

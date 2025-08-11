@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// PostgreSQL placeholder generator
-func PqPlaceholder() func(buf *bytes.Buffer) {
+// Numbering placeholder generator - PostgreSQL
+func NrPlaceholderInit() func(buf *bytes.Buffer) {
 	var cnt = 0
 
 	return func(buf *bytes.Buffer) {
@@ -15,8 +15,8 @@ func PqPlaceholder() func(buf *bytes.Buffer) {
 	}
 }
 
-// Question mark placehodler generator
-func QmPlaceholder() func(buf *bytes.Buffer) {
+// Question mark placehodler generator - SQLite
+func QmPlaceholderInit() func(buf *bytes.Buffer) {
 	return func(buf *bytes.Buffer) {
 		buf.WriteString("?")
 	}

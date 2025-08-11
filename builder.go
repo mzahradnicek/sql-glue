@@ -5,36 +5,32 @@ import (
 )
 
 type Builder struct {
-	cfg      Config
+	cfg      *Config
 	splitter *Splitter
 }
 
 func (b *Builder) Glue(q *Qg) (string, []interface{}, error) {
-	return q.ToSql(&b.cfg)
+	return q.Process(b.cfg)
 }
 
-func (b *Builder) Split(i interface{}, exclude []string) ([]string, []interface{}, error) {
-	return b.splitter.Split(i, exclude)
+func (b *Builder) Split(i interface{}, exclude ...string) ([]string, []interface{}, error) {
+	return b.splitter.Split(i, exclude...)
 }
 
-func (b *Builder) GetSplitter() *Splitter {
-	return b.splitter
-}
-
-func NewBuilder(cfg Config) *Builder {
+func NewBuilder(cfg *Config) *Builder {
 	res := &Builder{}
 
 	if cfg.IdentifierEscape == nil {
-		os.Stderr.WriteString("Error: sqlg config IdentifierEscape cant be nil\n")
+		os.Stderr.WriteString("Error: sql-glue config IdentifierEscape cant be nil\n")
 		os.Exit(1)
 	}
 
 	if cfg.KeyModifier == nil {
-		os.Stderr.WriteString("Error: sqlg config KeyModifier cant be nil\n")
+		os.Stderr.WriteString("Error: sql-glue config KeyModifier cant be nil\n")
 		os.Exit(1)
 	}
 
-	res.splitter = NewSplitter().KeyModifier(cfg.KeyModifier)
+	res.splitter = NewSplitter().KeyModifier(cfg.KeyModifier).Tag(cfg.Tag)
 
 	if cfg.Tag == "" {
 		cfg.Tag = "sqlg"
