@@ -38,7 +38,13 @@ func (qg Qg) compile(cfg *Config, placeholderWriter func(buf *bytes.Buffer)) (re
 			return qg[qi]
 		}
 
-		switch qval := qg[qi].(type) {
+		// if we have pointer, replace it with type
+		qElem, _ := resolveElemType(qg[qi], reflect.Struct, reflect.String)
+		if qElem != nil {
+			qg[qi] = qElem
+		}
+
+		switch qval := qElem.(type) {
 		case Qg:
 			sql, args, err := qval.compile(cfg, placeholderWriter)
 			if err != nil {
