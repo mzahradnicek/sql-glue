@@ -44,7 +44,7 @@ func (qg Qg) compile(cfg *Config, placeholderWriter func(buf *bytes.Buffer)) (re
 			qg[qi] = qElem
 		}
 
-		switch qval := qg[qi].(type) {
+		switch qval := qElem.(type) {
 		case Qg:
 			sql, args, err := qval.compile(cfg, placeholderWriter)
 			if err != nil {
