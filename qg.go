@@ -39,12 +39,10 @@ func (qg Qg) compile(cfg *Config, placeholderWriter func(buf *bytes.Buffer)) (re
 		}
 
 		// if we have pointer, replace it with type
-		qElem, qPtr := resolveElemType(qg[qi], reflect.Slice, reflect.String)
+		qElem, _ := resolveElemType(qg[qi], reflect.Slice, reflect.String)
 		if qElem != nil {
 			qg[qi] = qElem
 		}
-
-		fmt.Printf("qElem: %v, qPtr: %v, qElemType: %T\n", qElem, qPtr, qElem)
 
 		switch qval := qg[qi].(type) {
 		case Qg:
