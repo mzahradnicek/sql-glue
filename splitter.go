@@ -1,6 +1,7 @@
 package sqlg
 
 import (
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -127,19 +128,21 @@ StructOuterLoop:
 
 		// process nested struct
 		if f.Kind() == reflect.Struct {
-			nestedKeys, nestedVals, nestedErr := ss.Split(f.Interface(), exclude...)
-			if nestedErr != nil {
-				return nil, nil, nestedErr
-			}
+			if _, ok := f.Interface().(driver.Valuer); !ok {
+				nestedKeys, nestedVals, nestedErr := ss.Split(f.Interface(), exclude...)
+				if nestedErr != nil {
+					return nil, nil, nestedErr
+				}
 
-			// add struct name prefix
-			for j, l := 0, len(nestedKeys); j < l; j++ {
-				nestedKeys[j] = key + "." + nestedKeys[j]
-			}
+				// add struct name prefix
+				for j, l := 0, len(nestedKeys); j < l; j++ {
+					nestedKeys[j] = key + "." + nestedKeys[j]
+				}
 
-			resKeys = append(resKeys, nestedKeys...)
-			resVals = append(resVals, nestedVals...)
-			continue
+				resKeys = append(resKeys, nestedKeys...)
+				resVals = append(resVals, nestedVals...)
+				continue
+			}
 		}
 
 		resKeys = append(resKeys, key)
