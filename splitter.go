@@ -126,8 +126,8 @@ StructOuterLoop:
 			}
 		}
 
-		// process nested struct
-		if f.Kind() == reflect.Struct {
+		// process nested struct -> disable - need deeper brainstorming
+		if false && f.Kind() == reflect.Struct {
 			if !reflect.PointerTo(f.Type()).Implements(reflect.TypeOf((*driver.Valuer)(nil)).Elem()) {
 				nestedKeys, nestedVals, nestedErr := ss.Split(f.Interface(), exclude...)
 				if nestedErr != nil {
