@@ -86,8 +86,8 @@ StructOuterLoop:
 		f := val.Field(i)
 		tf := tpOf.Field(i)
 
-		// skip private fields
-		if tf.PkgPath != "" || slices.Contains(exclude, tf.Name) {
+		// Skip unexported fields or fields explicitly excluded by name.
+		if !tf.IsExported() || slices.Contains(exclude, tf.Name) {
 			continue
 		}
 
@@ -101,12 +101,9 @@ StructOuterLoop:
 
 			fkey, opts, _ := strings.Cut(tag, ",")
 
-			// check exclude groups in tags - little ugly, but maybe more performant way than use slices.Split...
+			// Check for exclusion options in the tag, like "kv" or "set".
 			if len(opts) > 0 {
-				s := string(opts)
-				for s != "" {
-					var opt string
-					opt, s, _ = strings.Cut(s, ",")
+				for _, opt := range strings.Split(opts, ",") {
 					if slices.Contains(exclude, opt) {
 						continue StructOuterLoop
 					}
@@ -126,8 +123,8 @@ StructOuterLoop:
 			}
 		}
 
-		// process nested struct -> disable - need deeper brainstorming
-		if false && f.Kind() == reflect.Struct {
+		// process nested struct
+		if f.Kind() == reflect.Struct {
 			if !reflect.PointerTo(f.Type()).Implements(reflect.TypeOf((*driver.Valuer)(nil)).Elem()) {
 				nestedKeys, nestedVals, nestedErr := ss.Split(f.Interface(), exclude...)
 				if nestedErr != nil {

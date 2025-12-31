@@ -5,9 +5,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 var testKeyModifier = strings.ToLower
+var testTime = time.Date(2025, time.December, 31, 23, 10, 12, 0, time.UTC)
 
 type testPerson1 struct {
 	FirstName string
@@ -23,6 +25,7 @@ type testPerson2 struct {
 	LastName  string `sqlg:"last_name"`
 	Password  string `sqlg:"-"`
 	Age       int
+	Created   time.Time
 
 	private bool
 }
@@ -43,10 +46,10 @@ var splitterStructTests = []struct {
 }{
 	{testPerson1{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, nil, []string{"firstname", "last_name", "age"}, []interface{}{"John", "Smith", 33}, nil},
 	{&testPerson1{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, nil, []string{"firstname", "last_name", "age"}, []interface{}{"John", "Smith", 33}, nil},
-	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, nil, []string{"firstname", "last_name", "age"}, []interface{}{"John", "Smith", 33}, nil},
-	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, []string{"ins"}, []string{"last_name", "age"}, []interface{}{"Smith", 33}, nil},
-	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, []string{"Age"}, []string{"firstname", "last_name"}, []interface{}{"John", "Smith"}, nil},
-	// {withNested{TestUser: testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, Address: "Fort Knocks 13", Cnt: sql.NullInt64{Valid: true, Int64: 234}}, []string{"Age"}, []string{"user_address", "testuser.firstname", "testuser.last_name", "cnt"}, []interface{}{"Fort Knocks 13", "John", "Smith", 234}, nil}, TODO
+	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33, Created: testTime}, nil, []string{"firstname", "last_name", "age", "created"}, []interface{}{"John", "Smith", 33, testTime}, nil},
+	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33, Created: testTime}, []string{"ins"}, []string{"last_name", "age", "created"}, []interface{}{"Smith", 33, testTime}, nil},
+	{testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33, Created: testTime}, []string{"Age"}, []string{"firstname", "last_name", "created"}, []interface{}{"John", "Smith", testTime}, nil},
+	{withNested{TestUser: testPerson2{FirstName: "John", LastName: "Smith", Password: "Secret", Age: 33}, Address: "Fort Knocks 13", Cnt: sql.NullInt64{Valid: true, Int64: 234}}, []string{"Age"}, []string{"user_address", "cnt", "testuser.firstname", "testuser.last_name", "testuser.created"}, []interface{}{"Fort Knocks 13", sql.NullInt64{Valid: true, Int64: 234}, "John", "Smith", time.Time{}}, nil},
 }
 
 var splitterMapTests = []struct {
@@ -90,6 +93,14 @@ func TestSplitterStruct(t *testing.T) {
 				}
 			case string:
 				if tt.vals[i].(string) != vt {
+					t.Errorf("#%v values got \"%v\", want \"%v\"", ti, vt, tt.vals[i])
+				}
+			case time.Time:
+				if tt.vals[i].(time.Time) != vt {
+					t.Errorf("#%v values got \"%v\", want \"%v\"", ti, vt, tt.vals[i])
+				}
+			case sql.NullInt64:
+				if tt.vals[i].(sql.NullInt64) != vt {
 					t.Errorf("#%v values got \"%v\", want \"%v\"", ti, vt, tt.vals[i])
 				}
 			default:
