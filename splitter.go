@@ -124,8 +124,9 @@ StructOuterLoop:
 		}
 
 		// process nested struct
+		// time.Time doesn't implements driver.Valuer, but can be processed by database drivers
 		if f.Kind() == reflect.Struct {
-			if !reflect.PointerTo(f.Type()).Implements(reflect.TypeOf((*driver.Valuer)(nil)).Elem()) {
+			if f.Type().String() != "time.Time" && !reflect.PointerTo(f.Type()).Implements(reflect.TypeOf((*driver.Valuer)(nil)).Elem()) {
 				nestedKeys, nestedVals, nestedErr := ss.Split(f.Interface(), exclude...)
 				if nestedErr != nil {
 					return nil, nil, nestedErr
